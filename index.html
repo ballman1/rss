@@ -25,11 +25,13 @@ h1{margin:0 0 1.25rem;font-size:1.75rem}
 <script defer>
 /* ───────── CONFIG ───────── */
 var RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';      // rss2json key
-var FEEDS    = [
+var FEEDS = [
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-allergies/rss.xml',
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-safety-recalls/rss.xml',
   'https://www.sciencedaily.com/rss/health_medicine/allergy.xml',
-  'https://news.google.com/rss/search?q=allergy+OR+food+allergy&hl=en-US&gl=US&ceid=US:en'
+  'https://medicalxpress.com/rss-feed/allergy-immunology-news/',
+  'https://www.eurekalert.org/rss/allergy.xml',
+  'https://www.foodallergy.org/news/rss.xml'
 ];
 var PLACE   = 'https://placehold.co/112x112?text=EPI';
 var MAX     = 30;
@@ -102,9 +104,7 @@ function pickImg(it){
 
 /* ───────── HELPERS ───────── */
 function unwrap(u){
-  if(u.indexOf('news.google.com')>-1 && u.indexOf('url=')>-1){
-    return decodeURIComponent(u.split('url=')[1].split('&')[0]);
-  }
+  // Google News unwrap removed, since Google News is not used
   return u;
 }
 function fix(u){
