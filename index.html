@@ -17,78 +17,89 @@
 </head>
 <body>
 
-  <h1>Latest Allergy News</h1>
-  <div id="news-feed"></div>
+<h1>Latest Allergy News</h1>
+<div id="news-feed"></div>
 
 <script>
-/* ————————————————— CONFIG ————————————————— */
-const RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';  // ← your rss2json key
-const FEEDS    = [
+/* ————— CONFIG ————— */
+const RSS_KEY   = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';                 // ← rss2json key
+const FEEDS     = [
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-allergies/rss.xml',
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-safety-recalls/rss.xml',
   'https://www.sciencedaily.com/rss/health_medicine/allergy.xml',
   'https://news.google.com/rss/search?q=allergy+OR+food+allergy&hl=en-US&gl=US&ceid=US:en'
 ];
-const PLACEHOLDER = 'https://placehold.co/112x112?text=EPI';   // default square
-const MAX_ITEMS   = 30;                                        // trim the river
-const MICROLINK   = link => `https://api.microlink.io/?url=${encodeURIComponent(link)}&meta=true&audio=false&video=false`;
+const PLACEHOLDER = 'https://placehold.co/112x112?text=EPI';
+const MAX_ITEMS   = 30;
+const MICROLINK   = url => `https://api.microlink.io/?url=${encodeURIComponent(url)}&meta=true&audio=false&video=false`;
 
-/* ————————————————— FETCH & MERGE ————————————————— */
+/* ————— MAIN ————— */
 (async () => {
-  const rssUrl = u => `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(u)}&api_key=${RSS_KEY}&count=20`;
-  const arrays = await Promise.allSettled(FEEDS.map(f => fetch(rssUrl(f)).then(r => r.json())));
-  const items  = arrays
-      .filter(r => r.status === 'fulfilled' && r.value.status === 'ok')
-      .flatMap(r => r.value.items);
+  const rssURL = u => `https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(u)}&api_key=${RSS_KEY}&count=20`;
 
-  // newest first
+  const arrays = await Promise.allSettled(FEEDS.map(f => fetch(rssURL(f)).then(r => r.json())));
+  const items  = arrays
+    .filter(r => r.status === 'fulfilled' && r.value.status === 'ok')
+    .flatMap(r => r.value.items);
+
   items.sort((a,b) => new Date(b.pubDate) - new Date(a.pubDate));
 
-  // enrich with thumbs (feeds first → Microlink fallback)
-  const enriched = await Promise.all(items.slice(0, MAX_ITEMS).map(async it => {
-    let thumb = extractFeedImage(it);
-    if (!thumb) {                         // fallback: one Microlink call per item
-      try {
-        const res  = await fetch(MICROLINK(it.link));
-        const data = await res.json();
-        thumb = data?.data?.image?.url || '';
-      } catch(e) { /* ignore */ }
-    }
-    return { ...it, thumb: thumb || PLACEHOLDER };
-  }));
+  const enriched = await Promise.all(
+    items.slice(0, MAX_ITEMS).map(async it => {
+      let thumb = extractImage(it);
+      if (!thumb) {
+        const realURL = unwrapGoogle(it.link);
+        try {
+          const res  = await fetch(MICROLINK(realURL));
+          const data = await res.json();
+          thumb = data?.data?.image?.url || '';
+        } catch {/* ignore */}
+      }
+      return { ...it, thumb: thumb || PLACEHOLDER };
+    })
+  );
 
   render(enriched);
 })();
 
-/* ————————————————— HELPERS ————————————————— */
-function extractFeedImage(it){
-  if (it.thumbnail)                                      return secure(it.thumbnail);
-  if (it.enclosure && (it.enclosure.link||it.enclosure.url))
-                                                        return secure(it.enclosure.link||it.enclosure.url);
-  if (it['media:content'] && it['media:content'].url)   return secure(it['media:content'].url);
-  const html = it.content || it.description || '';
-  const m    = html.match(/<img[^>]+src=['"]([^'"]+)['"]/i);
-  return m ? secure(m[1]) : '';
-}
-const secure = u => (u && u.startsWith('http://')) ? u.replace('http://','https://') : u;
+/* ————— IMAGE PICKER ————— */
+function extractImage(it){
+  // 1) explicit thumbnail
+  if (it.thumbnail) return fix(it.thumbnail);
 
-/* ————————————————— RENDER ————————————————— */
+  // 2) <media:thumbnail> (Google puts the hero here)
+  if (it['media:thumbnail']?.url) return fix(it['media:thumbnail'].url);
+
+  // 3) enclosure
+  if (it.enclosure?.url || it.enclosure?.link) return fix(it.enclosure.url || it.enclosure.link);
+
+  // 4) <media:content>
+  if (it['media:content']?.url) return fix(it['media:content'].url);
+
+  // 5) first <img src|data-src>… inside description/content
+  const html = it.content || it.description || '';
+  const m = html.match(/<img[^>]+(?:src|data-src)=['"]([^'"]+)['"]/i);
+  return m ? fix(m[1]) : '';
+}
+
+/* ————— UTILITIES ————— */
+function unwrapGoogle(u=''){
+  // If it's a Google News redirect, try to pull ?url=… out
+  if (/https?:\/\/news\.google\.com/.test(u) && u.includes('url=')){
+    const real = decodeURIComponent(u.split('url=')[1].split('&')[0]);
+    return real.startsWith('http') ? real : u;
+  }
+  return u;
+}
+
+function fix(u=''){
+  if (!u) return '';
+  if (u.startsWith('//'))      return 'https:' + u;
+  if (u.startsWith('http://')) return u.replace('http://','https://');
+  return u;
+}
+
+/* ————— RENDER ————— */
 function render(list){
   const box = document.getElementById('news-feed');
-  list.forEach(it=>{
-    const node = document.createElement('div');
-    node.className = 'item';
-    node.innerHTML = `
-      <img src="${it.thumb}" alt="" loading="lazy">
-      <div>
-        <a href="${it.link}" target="_blank" rel="noopener">${it.title}</a>
-        <time datetime="${it.pubDate}">${new Date(it.pubDate).toLocaleDateString()}</time>
-      </div>`;
-    box.appendChild(node);
-  });
-}
-</script>
-
-</body>
-</html>
-
+  list.forEach
