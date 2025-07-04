@@ -13,7 +13,7 @@
     .item a{font-weight:600;text-decoration:none;color:#064}
     .item a:hover{text-decoration:underline}
     .item time{display:block;font-size:.8rem;color:#666;margin-top:.3rem}
-    #error{color:#a00;font-weight:600;margin-top:2rem}
+    #error{color:#b00;font-weight:600;margin-top:2rem}
   </style>
 </head>
 <body>
@@ -24,7 +24,7 @@
 
 <script defer>
 /* ---------- CONFIG ---------- */
-var RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';   // rss2json key
+var RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';   // ← your rss2json key
 var FEEDS    = [
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-allergies/rss.xml',
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-safety-recalls/rss.xml',
@@ -36,7 +36,8 @@ var MAX_ITEMS   = 30;
 
 /* ---------- MAIN ---------- */
 (function(){
-  var rssBase = 'https://api.rss2json.com/v1/api.json?api_key=' + RSS_KEY + '&count=20&rss_url=';
+  var rssBase = 'https://api.rss2json.com/v1/api.json?api_key=' + RSS_KEY +
+                '&count=20&images=true&rss_url=';               // ← images=true does the trick
 
   Promise.allSettled(
     FEEDS.map(function(feed){
@@ -71,54 +72,43 @@ var MAX_ITEMS   = 30;
 function render(list){
   var box = document.getElementById('news-feed');
   list.forEach(function(it){
-    var thumb = pickImage(it);
-    if(!thumb){                       // Google redirect fallback
-      var clean = unwrapGoogle(it.link);
-      thumb = PLACEHOLDER;
-      // fire-and-forget Microlink to upgrade later (won’t block render)
-      fetch('https://api.microlink.io/?meta=true&url=' + encodeURIComponent(clean))
-        .then(function(r){ return r.json(); })
-        .then(function(d){
-          if(d && d.status === 'success' && d.data && d.data.image && d.data.image.url){
-            var imgNode = node.querySelector('img');
-            imgNode.src = fixUrl(d.data.image.url);
-          }
-        })["catch"](function(){});
-    }
+    var node  = document.createElement('div');
+    var thumb = pickImage(it) || PLACEHOLDER;
 
-    var node = document.createElement('div');
     node.className = 'item';
     node.innerHTML =
       '<img src="' + thumb + '" alt="" loading="lazy"><div>' +
       '<a href="' + it.link + '" target="_blank" rel="noopener">' + it.title + '</a>' +
       '<time datetime="' + it.pubDate + '">' + new Date(it.pubDate).toLocaleDateString() + '</time></div>';
+
     box.appendChild(node);
   });
 }
 
-/* ---------- IMAGE PICKING ---------- */
+/* ---------- IMAGE PICKER ---------- */
 function pickImage(it){
-  if(it.thumbnail)                               return fixUrl(it.thumbnail);
-  if(it['media:thumbnail'] && it['media:thumbnail'].url)
-                                                 return fixUrl(it['media:thumbnail'].url);
-  if(it.enclosure && (it.enclosure.url || it.enclosure.link))
-                                                 return fixUrl(it.enclosure.url || it.enclosure.link);
-  if(it['media:content'] && it['media:content'].url)
-                                                 return fixUrl(it['media:content'].url);
+  /* rss2json adds a .thumbnail field when &images=true */
+  if(it.thumbnail)                               return fix(it.thumbnail);
 
+  /* Google News often stores its hero image here */
+  if(it.enclosure && it.enclosure.link)          return fix(it.enclosure.link);
+
+  /* Some feeds use <media:thumbnail> */
+  if(it['media:thumbnail'] && it['media:thumbnail'].url)
+                                                 return fix(it['media:thumbnail'].url);
+
+  /* ScienceDaily uses <media:content> */
+  if(it['media:content'] && it['media:content'].url)
+                                                 return fix(it['media:content'].url);
+
+  /* Last-ditch: first <img …> inside description */
   var html = (it.content || it.description || '');
   var m    = html.match(/<img[^>]+(?:src|data-src)=['"]([^'"]+)['"]/i);
-  return m ? fixUrl(m[1]) : '';
+  return m ? fix(m[1]) : '';
 }
 
-/* ---------- HELPERS ---------- */
-function unwrapGoogle(u){
-  if(u.indexOf('news.google.com') > -1 && u.indexOf('url=') > -1){
-    return decodeURIComponent(u.split('url=')[1].split('&')[0]);
-  }
-  return u;
-}
-function fixUrl(u){
+/* ---------- URL CLEANUP ---------- */
+function fix(u){
   if(!u) return '';
   if(u.slice(0,2) === '//')        return 'https:' + u;
   if(u.slice(0,7) === 'http://')   return 'https://' + u.substr(7);
