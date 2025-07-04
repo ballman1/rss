@@ -1,20 +1,20 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Allergy-World Headlines</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:1rem;line-height:1.45}
-    h1{margin:0 0 1.25rem;font-size:1.75rem}
-    #news-feed{max-width:780px;margin:0 auto}
-    .item{display:grid;grid-template-columns:112px 1fr;gap:.9rem;margin-bottom:1rem;align-items:start}
-    .item img{width:112px;height:112px;object-fit:cover;border-radius:8px;box-shadow:0 0 4px rgba(0,0,0,.15)}
-    .item a{font-weight:600;text-decoration:none;color:#064}
-    .item a:hover{text-decoration:underline}
-    .item time{display:block;font-size:.8rem;color:#666;margin-top:.3rem}
-    #error{color:#b00;font-weight:600;margin-top:2rem}
-  </style>
+<meta charset="UTF-8">
+<title>Allergy-World Headlines</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;margin:0;padding:1rem;line-height:1.45}
+h1{margin:0 0 1.25rem;font-size:1.75rem}
+#news-feed{max-width:780px;margin:0 auto}
+.item{display:grid;grid-template-columns:112px 1fr;gap:.9rem;margin-bottom:1rem;align-items:start}
+.item img{width:112px;height:112px;object-fit:cover;border-radius:8px;box-shadow:0 0 4px rgba(0,0,0,.15)}
+.item a{font-weight:600;text-decoration:none;color:#064}
+.item a:hover{text-decoration:underline}
+.item time{display:block;font-size:.8rem;color:#666;margin-top:.3rem}
+#error{color:#b00;font-weight:600;margin-top:2rem}
+</style>
 </head>
 <body>
 
@@ -23,95 +23,94 @@
 <div id="error"></div>
 
 <script defer>
-/* ---------- CONFIG ---------- */
-var RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';   // ← your rss2json key
+/* ───────── CONFIG ───────── */
+var RSS_KEY  = 'nnzvu8zozr6k48xr7up6386y0xreoghpdp0evyfx';      // rss2json key
 var FEEDS    = [
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-allergies/rss.xml',
   'https://www.fda.gov/about-fda/contact-fda/stay-informed/rss-feeds/food-safety-recalls/rss.xml',
   'https://www.sciencedaily.com/rss/health_medicine/allergy.xml',
   'https://news.google.com/rss/search?q=allergy+OR+food+allergy&hl=en-US&gl=US&ceid=US:en'
 ];
-var PLACEHOLDER = 'https://placehold.co/112x112?text=EPI';
-var MAX_ITEMS   = 30;
+var PLACE   = 'https://placehold.co/112x112?text=EPI';
+var MAX     = 30;
+var M_URL   = function(u){ return 'https://api.microlink.io/?meta=true&audio=false&video=false&url=' + encodeURIComponent(u); };
+var RSS_URL = function(u){ return 'https://api.rss2json.com/v1/api.json?api_key=' + RSS_KEY + '&count=20&images=true&rss_url=' + encodeURIComponent(u); };
 
-/* ---------- MAIN ---------- */
+/* ───────── MAIN ───────── */
 (function(){
-  var rssBase = 'https://api.rss2json.com/v1/api.json?api_key=' + RSS_KEY +
-                '&count=20&images=true&rss_url=';               // ← images=true does the trick
-
   Promise.allSettled(
-    FEEDS.map(function(feed){
-      return fetch(rssBase + encodeURIComponent(feed)).then(function(r){ return r.json(); });
-    })
-  ).then(function(results){
-      var allItems = [];
-      results.forEach(function(res){
-        if(res.status === 'fulfilled' && res.value && res.value.status === 'ok'){
-          allItems = allItems.concat(res.value.items || []);
-        }else{
-          console.error('Feed failed:', res);
-        }
-      });
+    FEEDS.map(function(f){ return fetch(RSS_URL(f)).then(function(r){return r.json();}); })
+  ).then(function(resArr){
+      var items = [];
+      resArr.forEach(function(res){ if(res.status==='fulfilled'&&res.value&&res.value.status==='ok')
+          items = items.concat(res.value.items||[]); });
 
-      if(allItems.length === 0){
+      if(!items.length){
         document.getElementById('error').textContent =
-          'Sorry – no feeds could be loaded right now. Please try again later.';
+          'Sorry – no feeds could be loaded right now.';
         return;
       }
 
-      allItems.sort(function(a,b){ return new Date(b.pubDate) - new Date(a.pubDate); });
-      render(allItems.slice(0, MAX_ITEMS));
-  }).catch(function(err){
-      console.error('Top-level error', err);
+      items.sort(function(a,b){return new Date(b.pubDate)-new Date(a.pubDate);});
+      render(items.slice(0,MAX));
+  })["catch"](function(e){
+      console.error(e);
       document.getElementById('error').textContent =
         'Unexpected error loading the news feed.';
   });
 })();
 
-/* ---------- RENDER ---------- */
+/* ───────── RENDER ───────── */
 function render(list){
   var box = document.getElementById('news-feed');
   list.forEach(function(it){
-    var node  = document.createElement('div');
-    var thumb = pickImage(it) || PLACEHOLDER;
-
+    var imgSrc = pickImg(it);
+    var node   = document.createElement('div');
     node.className = 'item';
     node.innerHTML =
-      '<img src="' + thumb + '" alt="" loading="lazy"><div>' +
-      '<a href="' + it.link + '" target="_blank" rel="noopener">' + it.title + '</a>' +
-      '<time datetime="' + it.pubDate + '">' + new Date(it.pubDate).toLocaleDateString() + '</time></div>';
-
+      '<img src="'+(imgSrc||PLACE)+'" alt="" loading="lazy"><div>'+
+      '<a href="'+it.link+'" target="_blank" rel="noopener">'+it.title+'</a>'+
+      '<time datetime="'+it.pubDate+'">'+new Date(it.pubDate).toLocaleDateString()+'</time></div>';
     box.appendChild(node);
+
+    /* lazy upgrade if no image found */
+    if(!imgSrc){
+      (function(n, article){
+        fetch(M_URL(article)).then(function(r){return r.json();}).then(function(d){
+          if(d.status==='success'&&d.data&&d.data.image&&d.data.image.url){
+            n.querySelector('img').src = fix(d.data.image.url);
+          }
+        })["catch"](function(){});
+      })(node, unwrap(it.link));
+    }
   });
 }
 
-/* ---------- IMAGE PICKER ---------- */
-function pickImage(it){
-  /* rss2json adds a .thumbnail field when &images=true */
-  if(it.thumbnail)                               return fix(it.thumbnail);
-
-  /* Google News often stores its hero image here */
-  if(it.enclosure && it.enclosure.link)          return fix(it.enclosure.link);
-
-  /* Some feeds use <media:thumbnail> */
+/* ───────── IMAGE PICKING ───────── */
+function pickImg(it){
+  if(it.thumbnail)                              return fix(it.thumbnail);
+  if(it.enclosure && it.enclosure.link)         return fix(it.enclosure.link);
+  if(it.enclosure && it.enclosure.url)          return fix(it.enclosure.url);
   if(it['media:thumbnail'] && it['media:thumbnail'].url)
-                                                 return fix(it['media:thumbnail'].url);
-
-  /* ScienceDaily uses <media:content> */
+                                                return fix(it['media:thumbnail'].url);
   if(it['media:content'] && it['media:content'].url)
-                                                 return fix(it['media:content'].url);
-
-  /* Last-ditch: first <img …> inside description */
-  var html = (it.content || it.description || '');
+                                                return fix(it['media:content'].url);
+  var html = (it.content||it.description||'');
   var m    = html.match(/<img[^>]+(?:src|data-src)=['"]([^'"]+)['"]/i);
   return m ? fix(m[1]) : '';
 }
 
-/* ---------- URL CLEANUP ---------- */
+/* ───────── HELPERS ───────── */
+function unwrap(u){
+  if(u.indexOf('news.google.com')>-1 && u.indexOf('url=')>-1){
+    return decodeURIComponent(u.split('url=')[1].split('&')[0]);
+  }
+  return u;
+}
 function fix(u){
   if(!u) return '';
-  if(u.slice(0,2) === '//')        return 'https:' + u;
-  if(u.slice(0,7) === 'http://')   return 'https://' + u.substr(7);
+  if(u.slice(0,2)==='//')      return 'https:'+u;
+  if(u.slice(0,7)==='http://') return 'https://'+u.substr(7);
   return u;
 }
 </script>
